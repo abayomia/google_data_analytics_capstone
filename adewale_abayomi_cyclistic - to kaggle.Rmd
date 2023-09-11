@@ -1,0 +1,435 @@
+---
+title: "Coursera Capstone Project (Case 1)"
+output:
+  html_document:
+    df_print: paged
+---
+
+### Cyclistic_Exercise_Full_Year_Analysis
+
+Cyclistic, a bike-share company seeks to understand similar and differential trends between its annual members and casual riders for conversion of casual customers to members through targeted marketing strategies.
+Stakeholders include member and casual customers, the government of Chicago and Cyclistic.
+
+```{r Install and load libraries, echo=TRUE, message=FALSE, warning=FALSE}
+# Install and load required packages
+library(tidyverse)  # for data import, wrangling and visualization
+
+install.packages("geosphere")
+library(geosphere)  # for calculating distances from latitudes and longitudes
+
+install.packages("scales")
+library(scales)  # to aid scaling of plot axes
+```
+
+```{r Set working directory, message=FALSE, warning=FALSE}
+
+# set working directory
+setwd("C:/Users/abayomia/Downloads/coursera/capstone_project/case_one_cyclistic/updated_files")
+
+# confirm working directory
+getwd()
+```
+
+The year 2022 bike-share data was sourced from a storage bucket at cyclic 2022 bikeshare data on Amazon cloud services.
+https://divvy-tripdata.s3.amazonaws.com/index.html
+
+### STEP 1: COLLECT DATA
+```{r Step 1: Collect Data, message=FALSE, warning=FALSE}
+
+# Upload Cyclistic datasets (csv files) here
+jan <- read_csv("202201-divvy-tripdata.csv")
+feb <- read_csv("202202-divvy-tripdata.csv")
+mar <- read_csv("202203-divvy-tripdata.csv")
+apr <- read_csv("202204-divvy-tripdata.csv")
+may <- read_csv("202205-divvy-tripdata.csv")
+jun <- read_csv("202206-divvy-tripdata.csv")
+jul <- read_csv("202207-divvy-tripdata.csv")
+aug <- read_csv("202208-divvy-tripdata.csv")
+sep <- read_csv("202209-divvy-tripdata.csv")
+oct <- read_csv("202210-divvy-tripdata.csv")
+nov <- read_csv("202211-divvy-tripdata.csv")
+dec <- read_csv("202212-divvy-tripdata.csv")
+```
+
+### STEP 2: WRANGLE DATA AND COMBINE INTO A SINGLE FILE
+```{r Step 2: Wrangle Data and Combine into a Single File}
+
+# Compare column names in each of the files to check for dispcrepancies
+colnames(jan) == colnames(feb)
+colnames(jan) == colnames(mar)
+colnames(jan) == colnames(apr)
+colnames(jan) == colnames(may)
+colnames(jan) == colnames(jun)
+colnames(jan) == colnames(jul)
+colnames(jan) == colnames(aug)
+colnames(jan) == colnames(sep)
+colnames(jan) == colnames(oct)
+colnames(jan) == colnames(nov)
+colnames(jan) == colnames(dec)
+
+```
+Column names are consistent throughout tables
+
+```{r Step 2.1: Stack monthly data frames into one big data frame}
+
+# combine all months into a single dataset
+all_trips <- bind_rows(jan, feb, mar, apr, may, jun, jul, aug, sep, oct, nov, dec)
+
+# preview new dataset
+glimpse(all_trips)
+```
+
+### STEP 3: CLEAN UP AND ADD DATA TO PREPARE FOR ANALYSIS
+```{r Step 3: Inspect the new table that has been created}
+
+# show column names of table
+colnames(all_trips)
+
+# show the number of rows of data frame
+nrow(all_trips)
+
+# show dimensions of data frame, number of rows and columns
+dim(all_trips)
+
+# show the first 6 rows of the data frame
+head(all_trips)
+
+# show the last 6 rows of data frame
+tail(all_trips)
+
+# compactly display structure of data frame
+str(all_trips)
+
+# show concise statistical summary of each variable or column, mainly for numerics
+summary(all_trips)
+
+# get a glimpse of data using dplyr package
+glimpse(all_trips)
+```
+There are 5,667,717 rows (observations) and 15 columns (variables) in "all_trips" table
+
+There are a few issues that need to be fixed:
+
+1. "started_at" and "ended_at" columns are in character format and would need to be changed to datetime or POSIXct.
+
+2. "ride_length" is in "hms difftime" time format and should be changed to numerical format for easy plotting and computation.
+
+```{r Step 3.1: Convert to appropriate formats}
+
+# create a copy of the data for possible reverts
+df <- all_trips
+
+# use lubridate package to convert "started_at" and "ended_at" character formats to datetime
+df$started_at <- dmy_hm(df$started_at)
+df$ended_at <- dmy_hm(df$ended_at)
+
+# check to confirm successful conversion
+class(df$started_at[2])
+class(df$ended_at[2])
+
+# convert "ride_length" to numerical format
+df$ride_length <- as.numeric(df$ride_length)
+
+# check to note successful conversion
+is.numeric(df$ride_length)
+
+# add columns specifying hour, day, day of week and month and make copy
+df <- df %>% 
+  mutate(hour = hour(started_at), day_of_week = wday(started_at, label = TRUE), month = month(started_at, label = TRUE))
+
+# confirm column count
+dim(df)
+
+# use geosphere to calculate distance from latitude and longitude data
+df$distance <- distGeo(df[,c("start_lng", "start_lat")], df[,c("end_lng", "end_lat")]) %>% round(digits=2)
+
+# confirm column count
+dim(df)
+```
+
+```{r Step 3.2: Remove bad data}
+
+# remove observations where both ride_length and distance are less than or equal to zero, based on the assumption of maintenance repairs
+df <- df %>% 
+  filter(!(ride_length <= 0 & distance <= 0))
+
+# remove observations with null values in "ride_length" column
+df <- df %>% 
+  drop_na(ride_length)
+```
+
+### STEP 4: CONDUCT DESCRIPTIVE ANALYSIS
+```{r Step 4: Descriptive analysis on ride_length (all figures in seconds)}
+
+mean(df$ride_length)
+median(df$ride_length)
+max(df$ride_length)
+min(df$ride_length)
+
+# compare members and casual users
+aggregate(df$ride_length ~ df$member_casual, FUN = mean)
+aggregate(df$ride_length ~ df$member_casual, FUN = median)
+aggregate(df$ride_length ~ df$member_casual, FUN = max)
+aggregate(df$ride_length ~ df$member_casual, FUN = min)
+
+# averge ride time by day of week for members vs casual riders
+aggregate(df$ride_length ~ df$member_casual + df$day_of_week, FUN = mean)
+
+aggregate(df$ride_length ~ df$member_casual + df$day_of_week, FUN = max)
+
+aggregate(df$ride_length ~ df$member_casual + df$day_of_week, FUN = min)
+
+# averge ride time by month for members vs casual riders
+aggregate(df$ride_length ~ df$member_casual + df$month, FUN = mean)
+
+aggregate(df$ride_length ~ df$member_casual + df$month, FUN = max)
+
+aggregate(df$ride_length ~ df$member_casual + df$month, FUN = min)
+```
+```{r}
+colnames(df)
+```
+
+#### STEP 4.1: PLOT COUNT OF RIDES 
+```{r Step 4.1.1: Group and visualize number of rides by hour and rider type}
+
+# visualize number of rides by hour and rider type in column chart
+df %>% 
+  group_by(member_casual, hour) %>% 
+  summarize(number_of_rides = n()
+            , average_duration = mean(ride_length)) %>% 
+  ggplot(aes(x = hour, y = number_of_rides, fill = member_casual)) +
+  geom_col(position = "dodge") +
+  scale_y_continuous(labels = comma) +  # scale y-axis to disregard scientific notation
+  scale_x_continuous(breaks = scales::pretty_breaks(n = 23)) +
+  labs(title = "Number of Rides by Hour"
+       , subtitle = "Number of rides by rider type and hour"
+       , fill = "Rider Type") +
+  xlab("Time (Hour)") +
+  ylab("Number of Rides")
+
+# save column plot
+ggsave("ride_count_by_hour_col.png", width = 5000, height = 3500, units = "px", dpi = 700)
+
+
+# visualize number of rides by hour and rider type in line chart
+df %>% 
+  group_by(member_casual, hour) %>% 
+  summarize(number_of_rides = n()
+            , average_duration = mean(ride_length)) %>% 
+  ggplot(aes(x = hour, y = number_of_rides, color = member_casual)) +
+  geom_line(position = "dodge") +
+  scale_y_continuous(labels = comma) +  # scale y-axis to disregard scientific notation
+  scale_x_continuous(breaks = scales::pretty_breaks(n = 23)) +
+  labs(title = "Number of Rides by Hour"
+       , subtitle = "Number of rides by rider type and hour"
+       , color = "Rider Type") +  # fill is replaced with color
+  xlab("Time (Hour)") +
+  ylab("Number of Rides")
+
+# save line plot
+ggsave("ride_count_by_hour_line.png", width = 5000, height = 3500, units = "px", dpi = 700)
+```
+
+```{r Step 4.1.2: Group and visualize number of rides by day of week and rider type}
+
+# visualize number of rides by day of week and rider type
+df %>% 
+  group_by(member_casual, day_of_week) %>% 
+  summarize(number_of_rides = n(),
+            average_duration = mean(ride_length)) %>% 
+  ggplot(aes(x = day_of_week, y = number_of_rides, fill = member_casual)) +
+  geom_col(position = "dodge") +
+  scale_y_continuous(labels = comma) +  # scale y-axis to disregard scientific notation
+  labs(title = "Number of Rides by Day of Week",
+       subtitle = "Number of rides by rider type and day of week",
+       fill = "Rider Type") +
+  xlab("Day of Week") +
+  ylab("Number of Rides")
+
+# save plot
+ggsave("ride_count_by_weekday.png", width = 5000, height = 3500, units = "px", dpi = 700)
+```
+
+```{r Step 4.1.3: Group and visualize number of rides by month and rider type}
+
+# visualize number of rides by month and rider type
+df %>% 
+  group_by(member_casual, month) %>% 
+  summarize(number_of_rides = n(),
+            average_duration = mean(ride_length)) %>% 
+  ggplot(aes(x = month, y = number_of_rides, fill = member_casual)) +
+  geom_col(position = "dodge") +
+  scale_y_continuous(labels = comma) +  # scale y-axis to disregard scientific notation
+  labs(title = "Number of Rides by Month",
+       subtitle = "Number of rides by rider type and month",
+       fill = "Rider Type") +
+  xlab("Month") +
+  ylab("Number of Rides")
+
+# save plot
+ggsave("ride_count_by_month.png", width = 5000, height = 3500, units = "px", dpi = 700)
+```
+
+```{r Step 4.1.4: Group and visualize number of rides by season and rider type}
+
+# visualize number of rides by season and rider type
+
+# specify seasons from months in a vector
+spring <- c('Mar', 'Apr', 'May')
+summer <- c('Jun', 'Jul', 'Aug')
+fall <- c('Sep', 'Oct', 'Nov')
+winter <- c('Dec', 'Jan', 'Feb')
+
+# add seasons as a variable in dataset
+df <- df %>%
+  mutate(season = case_when(
+    month %in% spring ~ 'spring',
+    month %in% summer ~ 'summer',
+    month %in% fall ~ 'fall',
+    month %in% winter ~ 'winter'
+  ))
+
+# visualization
+df %>% 
+  group_by(member_casual, season) %>% 
+  summarize(number_of_rides = n(),
+            average_duration = mean(ride_length)) %>% 
+  ggplot(aes(x = factor(season, level=c('spring', 'summer', 'fall', 'winter')), y = number_of_rides, fill = member_casual)) +
+  geom_col(position = "dodge") +
+  scale_y_continuous(labels = comma) +  # scale y-axis to disregard scientific notation
+  labs(title = "Number of Rides by Season",
+       subtitle = "Number of rides by rider type and season",
+       fill = "Rider Type") +
+  xlab("Season") +
+  ylab("Number of Rides")
+
+# save plot
+ggsave("ride_count_by_season.png", width = 5000, height = 3500, units = "px", dpi = 700)
+```
+
+#### STEP 4.2: PLOT AVERAGE RIDE LENGTH 
+```{r Step 4.2.1: Group and visualize average ride length by hour and rider type}
+
+# visualize average ride length by hour and rider type in column format
+df %>% 
+  group_by(member_casual, hour) %>% 
+  summarize(number_of_rides = n()
+            , average_duration = mean(ride_length)) %>% 
+  ggplot(aes(x = hour, y = average_duration, fill = member_casual)) +
+  geom_col(position = "dodge") +
+  scale_y_continuous(labels = comma) +  # scale y-axis to disregard scientific notation
+  scale_x_continuous(breaks = scales::pretty_breaks(n = 23)) +
+  labs(title = "Average Trip Duration by Hour"
+       , subtitle = "Average ride length by rider type and hour"
+       , fill = "Rider Type") +
+  xlab("Time (Hour)") +
+  ylab("Average Ride Length (seconds)")
+
+# save plot
+ggsave("average_trip_duration_by_hour_col.png", width = 5000, height = 3500, units = "px", dpi = 700)
+
+
+# visualize average ride length by hour and rider type in line format
+df %>% 
+  group_by(member_casual, hour) %>% 
+  summarize(number_of_rides = n()
+            , average_duration = mean(ride_length)) %>% 
+  ggplot(aes(x = hour, y = average_duration, color = member_casual)) +
+  geom_line(position = "dodge") +
+  scale_y_continuous(labels = comma) +  # scale y-axis to disregard scientific notation
+  scale_x_continuous(breaks = scales::pretty_breaks(n = 23)) +
+  labs(title = "Average Trip Duration by Hour"
+       , subtitle = "Average ride length by rider type and hour"
+       , color = "Rider Type") +
+  xlab("Time (Hour)") +
+  ylab("Average Ride Length (seconds)")
+
+# save plot
+ggsave("average_trip_duration_by_hour_line.png", width = 5000, height = 3500, units = "px", dpi = 700)
+```
+
+
+```{r Step 4.2.2: Group and visualize average ride length by day of week and rider type}
+
+# visualize average ride length by day of week and rider type
+df %>% 
+  group_by(member_casual, day_of_week) %>% 
+  summarize(number_of_rides = n(),
+            average_duration = mean(ride_length)) %>% 
+  ggplot(aes(x = day_of_week, y = average_duration, fill = member_casual)) +
+  geom_col(position = "dodge") +
+  scale_y_continuous(labels = comma) +  # scale y-axis to disregard scientific notation
+  labs(title = "Average Trip Duration by Day of Week",
+       subtitle = "Average ride length by rider type and day of week",
+       fill = "Rider Type") +
+  xlab("Day of Week") +
+  ylab("Average Ride Length (seconds)")
+
+# save plot
+ggsave("average_trip_duration_by_weekday.png", width = 5000, height = 3500, units = "px", dpi = 700)
+```
+
+```{r Step 4.2.3: Group and visualize average ride length by month and rider type}
+
+# visualize average ride length by month and rider type
+df %>% 
+  group_by(member_casual, month) %>% 
+  summarize(number_of_rides = n(),
+            average_duration = mean(ride_length)) %>% 
+  ggplot(aes(x = month, y = number_of_rides, fill = member_casual)) +
+  geom_col(position = "dodge") +
+  scale_y_continuous(labels = comma) +  # scale y-axis to disregard scientific notation
+  labs(title = "Average Trip Duration by Month",
+       subtitle = "Average ride length by rider type and month",
+       fill = "Rider Type") +
+  xlab("Month") +
+  ylab("Average Ride Length (seconds)")
+
+# save plot
+ggsave("average_trip_duration_by_month.png", width = 5000, height = 3500, units = "px", dpi = 700)
+```
+
+```{r Step 4.2.4: Group and visualize average ride length by season and rider type}
+
+# visualize average ride length by season and rider type
+df %>% 
+  group_by(member_casual, season) %>% 
+  summarize(number_of_rides = n(),
+            average_duration = mean(ride_length)) %>% 
+  ggplot(aes(x = factor(season, level=c('spring', 'summer', 'fall', 'winter')), y = average_duration, fill = member_casual)) +
+  geom_col(position = "dodge") +
+  scale_y_continuous(labels = comma) +  # scale y-axis to disregard scientific notation
+  labs(title = "Average Trip Duration by Season",
+       subtitle = "Average ride length by rider type and season",
+       fill = "Rider Type") +
+  xlab("Season") +
+  ylab("Average Ride Length (seconds)")
+
+# save plot
+ggsave("average_trip_duration_by_season.png", width = 5000, height = 3500, units = "px", dpi = 700)
+```
+
+```{r Step 4.3: Export summary table to csv for visualization}
+
+# aggregate average ride length based on rider type and day of week
+avg_ride_length_weekly <- aggregate(df$ride_length ~ df$member_casual + df$day_of_week, FUN = mean)
+avg_ride_length_weekly
+
+# aggregate average ride length based on rider type and hour
+avg_ride_length_hourly <- aggregate(df$ride_length ~ df$member_casual + df$hour, FUN = mean)
+avg_ride_length_hourly
+
+# aggregate average ride length based on rider type and month
+avg_ride_length_monthly <- aggregate(df$ride_length ~ df$member_casual + df$month, FUN = mean)
+avg_ride_length_monthly
+
+# aggregate average ride length based on rider type and season
+avg_ride_length_seasonally <- aggregate(df$ride_length ~ df$member_casual + df$season, FUN = mean)
+avg_ride_length_seasonally
+
+write.csv(avg_ride_length_weekly, file='avg_ride_length_weekly.csv')
+write.csv(avg_ride_length_hourly, file='avg_ride_length_hourly.csv')
+write.csv(avg_ride_length_monthly, file='avg_ride_length_monthly.csv')
+write.csv(avg_ride_length_seasonally, file='avg_ride_length_seasonally.csv')
+```
